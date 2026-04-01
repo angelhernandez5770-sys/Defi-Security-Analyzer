@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -211,6 +211,19 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
     <h1 class="search-title">Análisis de seguridad <span>DeFi con IA</span></h1>
     <p class="search-sub">Introduce el nombre del protocolo, dirección del contrato, URL o token para obtener un análisis completo de riesgo.</p>
 
+    <div id="apikey-section" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rlg);padding:14px 16px;margin-bottom:14px;">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;">Anthropic API Key</span>
+        <input id="apikey-input" type="text" placeholder="sk-ant-api03-..." autocomplete="off" spellcheck="false"
+          style="flex:1;min-width:200px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);padding:8px 12px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;outline:none;">
+        <button onclick="saveApiKey()" style="background:var(--bdim);border:1px solid var(--bbdr);border-radius:var(--r);color:var(--blue);padding:8px 16px;font-size:12px;cursor:pointer;white-space:nowrap;">Guardar</button>
+        <span id="apikey-status" style="font-size:11px;font-family:'JetBrains Mono',monospace;"></span>
+      </div>
+      <div style="font-size:10px;color:var(--text3);margin-top:8px;">
+        Tu API key: <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--blue);">console.anthropic.com → API keys</a>
+      </div>
+    </div>
+
     <div class="search-box">
       <input class="search-input" id="search-input" type="text"
         placeholder="Ej: Uniswap v3, 0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984, curve.fi, AAVE..."
@@ -246,25 +259,9 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 </div>
 
 <script>
-const SYSTEM_PROMPT = `Actúa como un analista experto en seguridad DeFi, smart contracts, riesgo on-chain, tokenomics y due diligence para inversión en criptoactivos.
+const SYSTEM_PROMPT = `Eres un analista experto en seguridad DeFi. Analiza protocolos y tokens con criterio conservador. No inventes datos. Marca como NO VERIFICADO lo que no puedas confirmar. Sin auditoría=bandera roja+15pts. Contrato no verificado=+20pts.
 
-Tu misión es analizar cualquier protocolo DeFi o token a partir de una URL, dirección de contrato, nombre del proyecto o documentación pública, y convertir esa información en una evaluación clara, prudente y útil para decisiones de inversión reales.
-
-Debes ser conservador, exigente y orientado a riesgo. No inventes datos, no rellenes huecos con suposiciones y no asumas que un proyecto es seguro por ser popular. Todo lo que no pueda comprobarse debe marcarse como NO VERIFICADO.
-
-Analiza, siempre que sea posible:
-- seguridad del contrato, auditorías, verificación, permisos owner/admin, upgradeability, minting, pausability, blacklist/whitelist, multisig, timelock
-- liquidez, lock, concentración de holders, wallets privilegiadas, TVL
-- dependencia de oráculos, bridges o terceros
-- tokenomics, emisiones, vesting, presión vendedora
-- equipo, GitHub, documentación, gobernanza
-- historial de hacks, exploits o incidentes
-- señales de scam, rug, opacidad o marketing engañoso
-
-Clasifica cada hallazgo como Bandera verde, Bandera amarilla, Bandera roja, o No verificado.
-La ausencia de auditoría = bandera roja. Contrato no verificado = penalización severa.
-
-IMPORTANTE: Responde EXCLUSIVAMENTE en formato JSON válido con esta estructura exacta. No incluyas texto fuera del JSON:
+Responde EXCLUSIVAMENTE con JSON válido. Sin texto fuera del JSON:
 
 {
   "project": "nombre del proyecto",
@@ -301,6 +298,24 @@ IMPORTANTE: Responde EXCLUSIVAMENTE en formato JSON válido con esta estructura 
 let analysisHistory = JSON.parse(localStorage.getItem('defi_history') || '[]');
 let analysisCount = parseInt(localStorage.getItem('defi_count') || '0');
 
+function getApiKey(){ return localStorage.getItem('dsa_apikey')||''; }
+function saveApiKey(){
+  const k=document.getElementById('apikey-input').value.trim();
+  if(!k||!k.startsWith('sk-ant-')){alert('API key invalida. Debe empezar por sk-ant-');return;}
+  localStorage.setItem('dsa_apikey',k);
+  document.getElementById('apikey-status').textContent='Guardada';
+  document.getElementById('apikey-status').style.color='var(--green)';
+  document.getElementById('apikey-section').style.borderColor='var(--gbdr)';
+}
+function loadApiKey(){
+  const k=getApiKey();
+  if(k){
+    document.getElementById('apikey-input').value=k;
+    document.getElementById('apikey-status').textContent='Guardada';
+    document.getElementById('apikey-status').style.color='var(--green)';
+    document.getElementById('apikey-section').style.borderColor='var(--gbdr)';
+  }
+}
 function updateCountLabel(){
   document.getElementById('analysis-count').textContent =
     analysisCount === 0 ? '0 análisis realizados' :
@@ -329,6 +344,13 @@ async function runAnalysis(){
 
 
 
+  if(!getApiKey()){
+    document.getElementById('apikey-input').focus();
+    document.getElementById('apikey-section').style.borderColor='var(--rbdr)';
+    document.getElementById('apikey-status').textContent='Introduce tu API key primero';
+    document.getElementById('apikey-status').style.color='var(--red)';
+    return;
+  }
   const btn = document.getElementById('search-btn');
   btn.disabled = true;
   btn.textContent = 'Analizando...';
@@ -357,16 +379,17 @@ async function runAnalysis(){
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'x-api-key': getApiKey(),
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
+        max_tokens: 2000,
         system: SYSTEM_PROMPT,
         messages: [{
           role: 'user',
-          content: 'Analiza la seguridad y el riesgo de inversión de: ' + input + '\n\nResponde ÚNICAMENTE con el JSON estructurado. No incluyas texto fuera del JSON, ni antes ni después.'
+          content: 'Analiza la seguridad y el riesgo de inversión de: ' + input + '\n\nResponde ÚNICAMENTE con el JSON. Sin texto fuera del JSON.'
         }]
       })
     });
@@ -669,6 +692,7 @@ function deleteHistory(id){
 }
 
 // Init on load
+loadApiKey();
 renderHistory();
 </script>
 </body>
